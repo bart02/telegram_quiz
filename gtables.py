@@ -1,5 +1,7 @@
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+from time import time
+from cached_property import cached_property_with_ttl as mwt
 
 
 class Parser(gspread.Client):
@@ -7,8 +9,8 @@ class Parser(gspread.Client):
         creds = ServiceAccountCredentials.from_json_keyfile_name(credentials_file, ["https://spreadsheets.google.com/feeds", 'https://www.googleapis.com/auth/spreadsheets',
          "https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"])
         super().__init__(creds)
-
-    @property
+    
+    @mwt(100)
     def groups(self):
         return {file['name']: Group(file['name'], self.open(file['name'])) for file in self.list_spreadsheet_files()}
 
@@ -18,13 +20,15 @@ class Group:
         self.file = file
         self.name = name
 
-    @property
+    
+    @mwt(100)
     def users(self):
         logging = self.file.worksheet("Logging")
         users = list(zip(logging.col_values(1)[1:], logging.col_values(2)[1:]))
         return {user[0]: User(self, *user) for user in users}
 
-    @property
+    
+    @mwt(100)
     def themes(self):
         sheets = []
         for sheet in self.file.worksheets():
@@ -62,7 +66,7 @@ class Theme:
     def __eq__(self, other):
         return self.name == other.name
 
-    @property
+    @mwt(100)
     def params(self):
         return {'link': self.all_values[0][1],
                 'repetitions_per_week': self.all_values[0][3],
@@ -70,7 +74,8 @@ class Theme:
                 'wrong_answer_pop': self.all_values[0][7]
                 }
 
-    @property
+    
+    @mwt(100)
     def questions(self):
         for row in self.all_values[2:]:
             question_type = row[0]
