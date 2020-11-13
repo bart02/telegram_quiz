@@ -35,6 +35,7 @@ class Group:
 
 
 class User:
+    tg_id = -1
     def __init__(self, group, id, name):
         self.id = id
         self.name = name
@@ -54,8 +55,12 @@ class User:
 
 class Theme:
     def __init__(self, sheet, group):
+        self.name = sheet.title
         self.all_values = sheet.get_all_values()
         self.group = group
+
+    def __eq__(self, other):
+        return self.name == other.name
 
     @property
     def params(self):
