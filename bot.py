@@ -1,6 +1,7 @@
 import logging
-
+import random
 import time
+
 from telegram import Update
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
@@ -76,11 +77,15 @@ def main():
         for g in client.groups.values():
             for t in g.themes:
                 print(t.params)
-                if int(t.params['repetitions_per_week']) < time.time():
+                if int(t.params['repetitions_per_week']) < time.time():                   # TIME OF REPETITION PER WEEK
                     for u in users_auth:
                         if t in u.group.themes:
                             print(u.tg_id)
-                            updater.bot.send_message(u.tg_id, "hugij")
+                            chosen_question = random.choice(list(t.questions))
+                            u.queue.append(chosen_question)
+                            print(u.queue)
+                            # updater.bot.send_message(u.tg_id, u.queue[0])
+                            # u.queue.pop(0)
                     print("Time is up!")
 
 
