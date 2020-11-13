@@ -66,8 +66,10 @@ def main():
     updater.start_polling()
 
     while True:
-        sleep(30)
-        P
+        sleep(5)
+        for g in client.groups.values():
+            for t in g.themes:
+                print(t.params)
 
 
 

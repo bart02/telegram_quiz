@@ -101,6 +101,6 @@ class OpenQuestion(Question):
         self.right_answer = right_answer
 
 
-client = Parser("creds.json")
-q = (list(client.groups["SE"].themes[0].questions))
-print(q)
+# client = Parser("creds.json")
+# q = (list(client.groups["SE"].themes[0].questions))
+# print(q)
