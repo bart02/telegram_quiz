@@ -1,7 +1,7 @@
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from time import time
 from cached_property import cached_property_with_ttl as mwt
+from collections import defaultdict
 
 
 class Parser(gspread.Client):
@@ -40,12 +40,13 @@ class Group:
 
 class User:
     tg_id = -1
+    q_now = None
     def __init__(self, group, id, name):
         self.id = id
         self.name = name
         self.group = group
         self.queue = []
-        self.answered = []
+        self.answered = defaultdict(int)
 
     def add_task(self, task):
         self.queue.append(task)
@@ -77,6 +78,7 @@ class Theme:
     
     @mwt(100)
     def questions(self):
+        ret = []
         for row in self.all_values[2:]:
             question_type = row[0]
             repetition = row[1]
@@ -84,9 +86,10 @@ class Theme:
             right_answer = row[3]
             remain_answers = row[4:]
             if question_type == "Open":
-                yield OpenQuestion(repetition, question_text, right_answer)
+                ret.append(OpenQuestion(repetition, question_text, right_answer, self))
             elif question_type == "Multiple choice":
-                yield MultipleQuestion(repetition, question_text, right_answer, remain_answers)
+                ret.append(MultipleQuestion(repetition, question_text, right_answer, remain_answers, self))
+        return ret
 
 
 class Question:
@@ -94,21 +97,23 @@ class Question:
 
 
 class MultipleQuestion(Question):
-    def __init__(self, repetition, question_text, right_answer, remain_answers):
-        self.repetition = repetition
+    def __init__(self, repetition, question_text, right_answer, remain_answers, theme):
+        self.repetition = int(repetition)
         self.question_text = question_text
         self.right_answer = right_answer
         self.remain_answers = remain_answers
+        self.theme = theme
 
     def __repr__(self):
         return '<MultipleQuestion: {}; Answers {}; Right {}>'.format(self.question_text, self.remain_answers, self.right_answer)
 
 
 class OpenQuestion(Question):
-    def __init__(self, repetition, question_text, right_answer):
-        self.repetition = repetition
+    def __init__(self, repetition, question_text, right_answer, theme):
+        self.repetition = int(repetition)
         self.question_text = question_text
         self.right_answer = right_answer
+        self.theme = theme
 
 
 # client = Parser("creds.json")

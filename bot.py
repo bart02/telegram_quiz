@@ -1,13 +1,14 @@
 import logging
 import random
-import time
 
-from telegram import Update
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+import time
+from time import sleep
+
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 
-from gtables import Parser, User
-from time import sleep
+from gtables import Parser, MultipleQuestion
+from threading import Thread
 
 client = Parser("creds.json")
 users_auth = []
@@ -16,78 +17,84 @@ users_auth = []
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
 )
-
 logger = logging.getLogger(__name__)
 
-# Define a few command handlers. These usually take the two arguments update and
-# context. Error handlers also receive the raised TelegramError object in error.
+
 def start(update: Update, context: CallbackContext):
-    """Send a message when the command /start is issued."""
     tg_user = update.message.from_user
     for g in client.groups.values():
-        print(g.users)
-         # if tg_user.name not in g.users.keys() and g.users[tg_user.name] in users_auth:
-         #     users_auth.discard(g.users[tg_user.name])
         if tg_user.name in g.users.keys():
-            update.message.reply_text('Здравствуйте, {}! Вы принадлежите группе {}'.format(g.users[tg_user.name].name, g.users[tg_user.name].group.name))
+            update.message.reply_text('Good afternoon, {}!\nYou are in `{}` group.'.format(g.users[tg_user.name].name, g.users[tg_user.name].group.name), parse_mode='Markdown', reply_markup=ReplyKeyboardRemove())
             if g.users[tg_user.name] not in users_auth:
                 new_user = g.users[tg_user.name]
                 new_user.tg_id = update.message.chat_id
                 users_auth.append(new_user)
-            print(users_auth)
             break
     else:
-        update.message.reply_text('Вы не зачислены ни на один курс.')
-
+        update.message.reply_text("You haven't enrolled to any *Kafedra* course.", parse_mode='Markdown',)
 
 
 def help_command(update: Update, context: CallbackContext):
-    """Send a message when the command /help is issued."""
-    update.message.reply_text('Help!')
+    update.message.reply_text('This bot can be used only for study on GoodLine Kafedra courses. Please ask your instructor to add your Telegram alias to participants list.')
 
 
-def echo(update: Update, context: CallbackContext):
-    """Echo the user message."""
-    update.message.reply_text(update.message.text)
+def check_answer(update: Update, context: CallbackContext):
+    for u in users_auth:
+        if u.id == update.message.from_user.name:
+            if u.q_now:
+                if update.message.text == u.q_now.right_answer:
+                    update.message.reply_text('Well done!')
+                    u.answered[u.q_now] += 1
+                    print(u.answered)
+                else:
+                    update.message.reply_text(u.q_now.theme.params['wrong_answer_pop'].format(answer=u.q_now.right_answer, site=u.q_now.theme.params['link']))
+                u.q_now = None
 
 
-def main():
-    """Start the bot."""
-    # Create the Updater and pass it your bot's token.
-    # Make sure to set use_context=True to use the new context based callbacks
-    # Post version 12 this will no longer be necessary
-    updater = Updater("1497024833:AAGI9MWcP8ZTsVkNd0TnKEmBCub5LD3_Ahc", use_context=True)
-
-    # Get the dispatcher to register handlers
-    dispatcher = updater.dispatcher
-
-    # on different commands - answer in Telegram
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(CommandHandler("help", help_command))
-
-    # on noncommand i.e message - echo the message on Telegram
-    dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, echo))
-
-    # Start the Bot
-    updater.start_polling()
-
+def check_queue():
     while True:
-        sleep(5)
-        print(users_auth)
-        for g in client.groups.values():
-            for t in g.themes:
-                print(t.params)
-                if int(t.params['repetitions_per_week']) < time.time():                   # TIME OF REPETITION PER WEEK
-                    for u in users_auth:
-                        if t in u.group.themes:
-                            print(u.tg_id)
-                            chosen_question = random.choice(list(t.questions))
+        sleep(1)
+        for u in users_auth:
+            if u.queue:
+                if not u.q_now:
+                    question = u.queue.pop(0)
+                    if isinstance(question, MultipleQuestion):
+                        answers = question.remain_answers + [question.right_answer]
+                        random.shuffle(answers)
+                        answers = [[e] for e in answers]
+                        updater.bot.send_message(u.tg_id, question.question_text, reply_markup=ReplyKeyboardMarkup(answers, one_time_keyboard=True))
+                    else:
+                        updater.bot.send_message(u.tg_id, question.question_text, reply_markup=ReplyKeyboardRemove())
+
+                    u.q_now = question
+
+
+updater = Updater("1497024833:AAGI9MWcP8ZTsVkNd0TnKEmBCub5LD3_Ahc", use_context=True)
+
+dispatcher = updater.dispatcher
+
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(CommandHandler("help", help_command))
+
+dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, check_answer))
+
+updater.start_polling()
+
+t = Thread(target=check_queue)
+t.start()
+
+while True:
+    sleep(10)
+    for g in client.groups.values():
+        for t in g.themes:
+            if int(t.params['repetitions_per_week']) < time.time():                   # TIME OF REPETITION PER WEEK
+                for u in users_auth:
+                    if t in u.group.themes:
+                        ques = t.questions.copy()
+                        for answered, kol in u.answered.items():
+                            print(kol, answered.repetition)
+                            if kol >= answered.repetition:
+                                ques.remove(answered)
+                        if ques:
+                            chosen_question = random.choice(ques)
                             u.queue.append(chosen_question)
-                            print(u.queue)
-                            # updater.bot.send_message(u.tg_id, u.queue[0])
-                            # u.queue.pop(0)
-                    print("Time is up!")
-
-
-if __name__ == '__main__':
-    main()
